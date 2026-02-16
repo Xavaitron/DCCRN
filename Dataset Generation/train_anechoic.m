@@ -1,13 +1,13 @@
 clc; close all;
 
 %% 1. CONFIGURATION
-maleDir   = "../Dataset_raw/Male";           
-femaleDir = "../Dataset_raw/Female";         
-noiseDir  = "../Dataset_raw/Noise";    
-musicDir  = "../Dataset_raw/Music"; 
+maleDir   = "./Dataset_raw/Male";           
+femaleDir = "./Dataset_raw/Female";         
+noiseDir  = "./Dataset_raw/Noise";    
+musicDir  = "./Dataset_raw/Music"; 
 
 % Output folder
-outputDatasetDir = '../Train_Dataset/anechoic';
+outputDatasetDir = './Train_Dataset/anechoic';
 
 % --- Generation Settings ---
 numSamplesToGenerate = 150000;
