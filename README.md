@@ -1,13 +1,32 @@
-# SP CUP Phase 2 - Audio Source Separation with DCCRN
+# Audio Visual Zooming on Low compute devices using Deep Complex Convolutional Recurrent Network (DCCRN)
 
-Angle-conditioned audio source separation using a DCCRN architecture for IEEE Signal Processing Cup 2026.
+Audio-visual (AV) zooming aligns the auditory field
+of view with that of the camera by enhancing sources lying
+inside the visual frustum and suppressing those outside. On
+consumer smartphones, only two closely spaced microphones
+are available, computational budgets are limited, and reverber-
+ation distorts the spatial cues on which classical beamforming
+relies. We present a complete mathematical and algorithmic
+specification of a lightweight (∼ 10M parameters) direction-
+conditioned enhancement network, the DCCRN–Conformer, that
+addresses these constraints. The system operates in the complex
+short-time Fourier transform (STFT) domain. A complex-valued
+encoder–decoder retains the inter-channel phase difference (IPD)
+carrying direction-of-arrival information, a dual-path Conformer
+bottleneck performs joint frequency- and time-axis modeling,
+and a unit-circle azimuth embedding controls a shared real-
+valued multiplicative bottleneck gain. On 5,000 reverberant test
+mixtures (RT60 = 0.5 s, SIR = 0 dB, SNR = 5 dB), the proposed
+system improves SI-SDR by 40.14 dB, STOI by 0.214, and PESQ
+by 1.28 over the unprocessed mixture, while processing a three-
+second segment in approximately 50.55 ms on the reported CPU
+setup.
 
 ---
 
 ## 📁 Project Structure
 
 ```
-SP_CUP_Phase_2/
 ├── Dataset Generation/              # MATLAB scripts for synthetic dataset creation
 │   ├── train_anechoic.m             # Training data (150k samples, RT60=0.0)
 │   ├── train_reverb.m               # Training data (150k samples, RT60=0.5)
@@ -23,19 +42,9 @@ SP_CUP_Phase_2/
 │   ├── evaluation_anechoic/         # Evaluation outputs
 │   └── evaluation_reverb/           # Evaluation outputs
 │
-├── Submission/                      # Self-contained competition submission
-│   ├── Task1_Anechoic/
-│   │   ├── Task1_Anechoic_5dB.mat
-│   │   ├── anechoic_Conformer.pth
-│   │   ├── process_task1.py
-│   │   └── [audio files]
-│   └── Task2_Reverberant/
-│       ├── Task2_Reverberant_5dB.mat
-│       ├── reverb_Conformer.pth
-│       ├── process_task2.py
-│       └── [audio files]
-│
-├── prepare_submission.m             # Generates submission folder from evaluation
+├── RIR_Gen/                         # Room Impulse Response generator (MEX)
+├── generate_rir_data.m              # Generates rir_data.mat for inference
+├── prepare_submission.m             # Packages evaluation outputs
 ├── requirements.txt                 # Python dependencies
 └── README.md
 ```
@@ -91,16 +100,15 @@ mex rir_generator.cpp rir_generator_core.cpp
 Download the raw audio files needed for dataset generation:
 
 1. Download `Dataset_raw.zip` from [Google Drive](https://drive.google.com/file/d/1hG6gk2BDHD-96WnAUOxVxm_p86jbgX9r/view?usp=sharing)
-2. Place the zip file in the project root (`SP_CUP_Phase_2/`)
+2. Place the zip file in the project root
 3. Extract it so the folder structure looks like:
 
 ```
-SP_CUP_Phase_2/
-└── Dataset_raw/
-    ├── Male/       # Male speech files (.wav/.flac)
-    ├── Female/     # Female speech files (.wav/.flac)
-    ├── Noise/      # Noise files (.wav/.flac)
-    └── Music/      # Music files (.wav/.flac)
+Dataset_raw/
+├── Male/       # Male speech files (.wav/.flac)
+├── Female/     # Female speech files (.wav/.flac)
+├── Noise/      # Noise files (.wav/.flac)
+└── Music/      # Music files (.wav/.flac)
 ```
 
 > **Note:** `Dataset_raw/` and `Dataset_raw.zip` are gitignored and will not be committed.
@@ -124,7 +132,7 @@ sample_XXXXX/
 └── meta.json        # {target_angle, interf_angle, rt60, ...}
 ```
 
-**Settings:** SIR=0dB, SNR=5dB, 16kHz, 4s duration
+**Settings:** SIR = 0 dB, SNR = 5 dB, 16 kHz, 4 s duration
 
 ---
 
@@ -140,6 +148,13 @@ Edit config in script:
 DATASET_ROOT = r"../Train_Dataset/reverb"  # or anechoic
 RESUME_FROM = "reverb_Conformer.pth"       # or None
 ```
+
+**Training details:**
+- Optimizer: AdamW (lr = 1e-4, weight decay = 1e-4)
+- Scheduler: Cosine Annealing (η_min = 1e-6)
+- Loss: Composite SI-SDR + Multi-Resolution STFT + Mel-Spectrogram + Phase-Aware
+- Silence augmentation: 20% probability (random off-axis angles)
+- Epochs: 50, Batch size: 4
 
 ---
 
@@ -170,14 +185,14 @@ python inference_Conformer.py -i input.wav -a 90 -o output.wav -m reverb_Conform
 | Arg | Description |
 |-----|-------------|
 | `-i` | Input stereo audio |
-| `-a` | Target angle (0-180°) |
+| `-a` | Target angle (0–180°) |
 | `-o` | Output file |
 | `-m` | Model checkpoint |
 | `-d` | Device (cpu/cuda) |
 
 ---
 
-### 6. Generate RIR Data for Submission
+### 6. Generate RIR Data
 
 ```bash
 matlab -batch "run('generate_rir_data.m')"
@@ -189,64 +204,100 @@ Generates `rir_data.mat` containing Room Impulse Responses for:
 
 ---
 
-### 7. Generate Submission
-
-```bash
-matlab -batch "run('prepare_submission.m')"
-```
-
-Creates self-contained `Submission/` folder ready for competition.
-
----
-
 ## 🏗️ Model Architecture
 
-**DCCRNConformer** (~10M parameters)
+**DCCRN-Conformer** — 9,994,312 parameters (~10M)
+
+```
+Stereo Input (2ch, 16kHz)
+    │
+    ▼
+  STFT (n_fft=512, hop=128)
+    │
+    ▼
+┌─────────────────────────────────┐
+│  Complex Encoder                │
+│  Conv2d: 2 → 48 → 96 → 192 → 256  │
+│  + ComplexBatchNorm + SE Blocks │
+└─────────────────────────────────┘
+    │
+    ├── Angle MLP Injection (sin/cos → 128 → 256 → 256)
+    │
+    ▼
+┌─────────────────────────────────┐
+│  Dual-Path Conformer Bottleneck │
+│  3 blocks × 4 heads             │
+│  Freq-path (k=15) + Time-path (k=31) │
+│  FFN → MHSA → ConvModule → FFN │
+└─────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────┐
+│  Complex Decoder                │
+│  ConvTranspose2d + Skip Connections │
+│  256 → 192 → 96 → 48 → 2      │
+└─────────────────────────────────┘
+    │
+    ▼
+  Complex Masking (tanh)
+    │
+    ▼
+  iSTFT → Mono Output
+```
 
 | Component | Details |
 |-----------|---------|
-| Encoder | Complex Conv2d: 2→48→96→192→256 |
-| Bottleneck | Dual-Path Conformer (3 blocks, 4 heads) |
+| Encoder | Complex Conv2d: 2→48→96→192→256 with Squeeze-Excitation |
+| Bottleneck | Dual-Path Conformer (3 blocks, 4 heads, depthwise separable conv) |
 | Decoder | Complex ConvTranspose2d with skip connections |
-| Conditioning | Angle MLP injection at bottleneck |
-
-**Audio:** 16kHz, STFT n_fft=512, hop=128, 3s fixed input
-
----
-
-## � Evaluation Results
-
-### Anechoic Condition (5,000 samples)
-
-| Category | SI-SDR (dB) | STOI | PESQ |
-|----------|-------------|------|------|
-| **Best Overall** | 16.91 | 0.950 | 2.64 |
-| Male + Noise | 16.91 | 0.950 | 2.64 |
-| Male + Music | 13.46 | 0.956 | 2.54 |
-| Male + Female | 12.96 | 0.959 | 2.64 |
-
-**Inference:** 50.6ms avg (59x real-time for 3s audio)
-
-### Reverberant Condition (5,000 samples)
-
-| Category | SI-SDR (dB) | STOI | PESQ |
-|----------|-------------|------|------|
-| **Best Overall** | 12.49 | 0.942 | 2.48 |
-| Male + Noise | 12.62 | 0.850 | 2.00 |
-| Male + Music | 11.58 | 0.886 | 2.27 |
-| Male + Female | 12.49 | 0.942 | 2.48 |
-
-**Inference:** 50.5ms avg (59x real-time for 3s audio)
+| Conditioning | Angle MLP: sin/cos encoding → 128 → 256 → 256, injected at bottleneck |
+| Masking | Complex ratio masking with tanh activation |
+| Audio | 16 kHz, STFT n_fft=512, hop=128, 3 s fixed input |
 
 ---
 
-## �📊 Metrics
+## 📊 Evaluation Results
 
-| Metric | Description |
-|--------|-------------|
-| **SI-SDR** | Scale-Invariant Signal-to-Distortion Ratio (dB) |
-| **STOI** | Short-Time Objective Intelligibility (0-1) |
-| **PESQ** | Perceptual Evaluation of Speech Quality (-0.5 to 4.5) |
+All results are reported on 5,000 test samples per condition with fixed geometry (target at 90°, interferer at 40°), SIR = 0 dB, SNR = 5 dB.
+
+### Anechoic Condition (RT60 = 0.0)
+
+| Metric | Average | Best Case |
+|--------|---------|-----------|
+| **SI-SDR** | 12.46 dB | 16.19 dB |
+| **STOI** | 0.8812 | 0.9760 |
+| **PESQ** | 1.6131 | 2.8012 |
+
+- **Best Overall Sample:** test_sample_00504 (Combined Score: 2.92 / 3.0)
+- **Inference:** 50.64 ms avg ± 5.58 ms → **59.24× real-time** (for 3 s audio)
+
+### Reverberant Condition (RT60 = 0.5)
+
+| Metric | Average | Best Case |
+|--------|---------|-----------|
+| **SI-SDR** | 8.91 dB | 11.19 dB |
+| **STOI** | 0.8419 | 0.9627 |
+| **PESQ** | 1.4456 | 2.2263 |
+
+- **Best Overall Sample:** test_sample_00404 (Combined Score: 2.81 / 3.0)
+- **Inference:** 50.66 ms avg ± 5.40 ms → **59.22× real-time** (for 3 s audio)
+
+### Summary
+
+| Condition | SI-SDR (dB) | STOI | PESQ | Real-time Factor |
+|-----------|-------------|------|------|------------------|
+| Anechoic (RT60 = 0.0) | 12.46 | 0.8812 | 1.6131 | 59.24× |
+| Reverberant (RT60 = 0.5) | 8.91 | 0.8419 | 1.4456 | 59.22× |
+
+---
+
+## 📏 Metrics
+
+| Metric | Description | Range |
+|--------|-------------|-------|
+| **SI-SDR** | Scale-Invariant Signal-to-Distortion Ratio | dB (higher is better) |
+| **STOI** | Short-Time Objective Intelligibility | 0–1 (higher is better) |
+| **PESQ** | Perceptual Evaluation of Speech Quality | −0.5 to 4.5 (higher is better) |
 
 ---
 
@@ -254,23 +305,18 @@ Creates self-contained `Submission/` folder ready for competition.
 
 ```bash
 # Setup
-cd SP_CUP_Phase_2
 pip install -r requirements.txt
 
-# Inference
+# Single-file inference
 cd "Model Inference"
 python inference_Conformer.py -i audio.wav -a 90 -o out.wav -d cuda
 
-# Evaluate
+# Full evaluation
 python test_Conformer.py
-
-# Generate submission
-cd ..
-matlab -batch "run('prepare_submission.m')"
 ```
 
 ---
 
-##  License
+## 📄 License
 
-Developed for IEEE Signal Processing Cup 2026 competition.
+This project is intended for research purposes. If you use this work, please cite accordingly.
