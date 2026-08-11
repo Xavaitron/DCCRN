@@ -1,0 +1,56 @@
+{
+  "sample_1": {
+    "label": "Male+Female",
+    "mixture_vs_target": {
+      "SI-SDR": -15.2464,
+      "PESQ": 1.3138,
+      "STOI": 0.7386
+    },
+    "processed_vs_target": {
+      "SI-SDR": 12.4925,
+      "PESQ": 2.4829,
+      "STOI": 0.9415
+    },
+    "improvement": {
+      "SI-SDR": 27.7389,
+      "PESQ": 1.1691,
+      "STOI": 0.2029
+    }
+  },
+  "sample_2": {
+    "label": "Male+Music",
+    "mixture_vs_target": {
+      "SI-SDR": -34.5694,
+      "PESQ": 1.1931,
+      "STOI": 0.666
+    },
+    "processed_vs_target": {
+      "SI-SDR": 11.5766,
+      "PESQ": 2.2729,
+      "STOI": 0.8862
+    },
+    "improvement": {
+      "SI-SDR": 46.146,
+      "PESQ": 1.0798,
+      "STOI": 0.2202
+    }
+  },
+  "sample_3": {
+    "label": "Male+Noise",
+    "mixture_vs_target": {
+      "SI-SDR": -26.7753,
+      "PESQ": 1.0812,
+      "STOI": 0.5972
+    },
+    "processed_vs_target": {
+      "SI-SDR": 12.62,
+      "PESQ": 1.9995,
+      "STOI": 0.8497
+    },
+    "improvement": {
+      "SI-SDR": 39.3953,
+      "PESQ": 0.9183,
+      "STOI": 0.2525
+    }
+  }
+}
